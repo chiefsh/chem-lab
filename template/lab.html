@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>化学虚拟实验台</title>
+  <style>
+    :root {
+      --ink: #e8eef6; --muted: #9db0c6; --line: rgba(255,255,255,.12);
+      --ok: #34d399; --bad: #fb7185; --accent: #2dd4bf;
+      --panel: rgba(8, 14, 24, .72); --glass: rgba(255,255,255,.08);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; }
+    body {
+      font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--ink); background: #070c14; display: flex; flex-direction: column;
+    }
+    body.mode-2d { background: #c5d4e0; color: #1e2937; }
+    .stage {
+      flex: 1; min-height: 0; position: relative; overflow: hidden;
+      background: #8fb7d4;
+    }
+    body.mode-2d .stage {
+      background:
+        radial-gradient(1200px 420px at 50% -10%, #eef6fb, transparent 55%),
+        linear-gradient(#c9d8e6 0 58%, #2c333d 58% 61%, #3b2a1a 61% 100%);
+    }
+    #view-2d, #view-3d { position: absolute; inset: 0; width: 100%; height: 100%; }
+    #bench { width: 100%; height: 100%; display: block; }
+    .hud-top, .hud-shelf, .hud-guide, .hud-bottom, .view-switch, .cam-btn, .boot {
+      position: absolute; z-index: 4; pointer-events: auto;
+    }
+    .hud-top {
+      left: 228px; right: 312px; top: 12px; display: flex; align-items: flex-start; gap: 14px;
+      pointer-events: none;
+    }
+    .hud-top > * { pointer-events: auto; }
+    .title-block {
+      background: var(--panel); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--line); border-radius: 18px; padding: 10px 16px 12px;
+      box-shadow: 0 18px 40px rgba(0,0,0,.28);
+    }
+    .badge {
+      font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+      color: var(--accent); background: rgba(45,212,191,.14); border-radius: 999px;
+      padding: 3px 9px; display: inline-block; margin-bottom: 4px;
+    }
+    .title-block h1 { font-size: 18px; margin: 0; font-weight: 700; letter-spacing: -.02em; }
+    .title-block p { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
+    .eq {
+      margin-top: 8px; display: inline-block; font-size: 13px;
+      background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 10px;
+      padding: 4px 10px; font-family: ui-serif, Georgia, serif; color: #99f6e4;
+    }
+    body.mode-2d .title-block { background: rgba(255,255,255,.82); color: #0f172a; }
+    body.mode-2d .title-block p, body.mode-2d .hud-guide, body.mode-2d .sec-title { color: #475569; }
+    body.mode-2d .eq { color: #0f766e; background: #fff; }
+    .hud-shelf {
+      left: 16px; top: 12px; bottom: 92px; width: 198px;
+      background: var(--panel); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+      border: 1px solid var(--line); border-radius: 20px; padding: 12px 10px;
+      overflow: auto; box-shadow: 0 18px 40px rgba(0,0,0,.28);
+    }
+    .sec-title {
+      font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+      color: #7dd3fc; margin: 8px 4px 8px;
+    }
+    .bottles { display: flex; flex-direction: column; gap: 8px; }
+    .bottle {
+      display: flex; align-items: center; gap: 8px; border: 1px solid var(--line);
+      background: var(--glass); border-radius: 14px; padding: 8px 8px 8px 10px;
+      cursor: grab; user-select: none; touch-action: none;
+    }
+    .bottle:hover { border-color: rgba(45,212,191,.55); }
+    .bottle:active { cursor: grabbing; }
+    .bottle.placed { opacity: .38; cursor: default; }
+    .bottle.wrong { border-color: var(--bad); background: rgba(251,113,133,.12); }
+    .bottle .ico { width: 28px; height: 36px; display: flex; align-items: center; justify-content: center; }
+    .bottle .ico svg { max-width: 24px; max-height: 34px; }
+    .bottle .name { flex: 1; font-size: 12px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .add {
+      border: 0; background: #2dd4bf; color: #042f2e; font-size: 11px; font-weight: 800;
+      border-radius: 999px; padding: 4px 8px; cursor: pointer; white-space: nowrap;
+    }
+    .chips { display: flex; flex-direction: column; gap: 6px; }
+    .chip {
+      display: flex; align-items: center; gap: 8px; border: 1px solid var(--line);
+      background: var(--glass); border-radius: 14px; padding: 7px 10px;
+      font-size: 12px; cursor: grab; user-select: none; touch-action: none; color: inherit;
+    }
+    .chip.placed { opacity: .35; cursor: default; }
+    .chip.wrong { border-color: var(--bad); }
+    .chip .ico { width: 22px; height: 28px; display: flex; }
+    .chip .ico svg { max-width: 20px; max-height: 26px; }
+    .hud-guide {
+      right: 16px; top: 56px; bottom: 92px; width: 280px;
+      background: var(--panel); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+      border: 1px solid var(--line); border-radius: 20px; padding: 14px 14px 10px;
+      display: flex; flex-direction: column; box-shadow: 0 18px 40px rgba(0,0,0,.28);
+    }
+    body.mode-2d .hud-shelf, body.mode-2d .hud-guide, body.mode-2d .hud-bottom, body.mode-2d .view-switch, body.mode-2d .cam-btn {
+      background: rgba(255,255,255,.86); color: #0f172a; backdrop-filter: blur(12px);
+    }
+    .guide-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .guide-top h2 { margin: 0; font-size: 14px; }
+    .guide-top .n { font-size: 12px; color: var(--muted); }
+    #guide-rail { display: flex; gap: 5px; margin: 0 0 10px; }
+    #guide-rail i { flex: 1; height: 4px; border-radius: 99px; background: rgba(148,163,184,.45); }
+    #guide-rail i.done { background: #2dd4bf; }
+    #guide-rail i.now { background: #fbbf24; }
+    .g-kind {
+      font-size: 10px; font-weight: 800; letter-spacing: .08em; color: #042f2e;
+      background: #2dd4bf; border-radius: 999px; padding: 2px 8px; margin-right: 6px;
+    }
+    #guide-title { font-size: 14px; font-weight: 700; margin: 0 0 8px; }
+    #guide-body { font-size: 13px; line-height: 1.65; color: #c5d4e6; flex: 1; overflow: auto; }
+    body.mode-2d #guide-body { color: #334155; }
+    .guide-nav { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 0 2px; flex-shrink: 0; }
+    .round {
+      width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line);
+      background: var(--glass); cursor: pointer; font-size: 16px; color: inherit;
+    }
+    .round.play { width: 46px; height: 46px; background: #14b8a6; color: #042f2e; border: 0; font-size: 17px; }
+    .hud-bottom {
+      left: 228px; right: 312px; bottom: 14px;
+      background: var(--panel); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+      border: 1px solid var(--line); border-radius: 18px; padding: 8px 10px;
+      display: grid; grid-template-columns: minmax(70px,.7fr) minmax(86px,.8fr) minmax(140px,1.4fr);
+      gap: 8px; align-items: center; box-shadow: 0 18px 40px rgba(0,0,0,.28);
+    }
+    .hud-bottom.no-heat { grid-template-columns: 1fr 1fr; }
+    .meter { padding: 2px 8px; }
+    .meter .k { font-size: 10px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+    .meter .v { font-size: 18px; font-weight: 700; line-height: 1.15; }
+    .heat-row { display: flex; align-items: center; gap: 8px; }
+    .heat-row input { flex: 1; accent-color: var(--accent); }
+    .heat-val { font-size: 12px; font-weight: 700; color: var(--accent); min-width: 42px; text-align: right; }
+    .ops { position: absolute; left: 228px; right: 312px; bottom: 72px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; z-index: 4; }
+    .ops .btn, .btn {
+      appearance: none; border: 0; border-radius: 12px; padding: 9px 12px; font-size: 12px;
+      font-weight: 800; cursor: pointer; background: #0f766e; color: #fff;
+    }
+    .ops .btn.quiet { background: rgba(255,255,255,.12); color: inherit; border: 1px solid var(--line); }
+    body.mode-2d .ops .btn.quiet { background: #fff; color: #0f172a; }
+    .btn:disabled { opacity: .45; cursor: default; }
+    #guide-body .btn { margin-top: 12px; width: 100%; }
+    .view-switch {
+      top: 12px; right: 16px; display: flex; gap: 4px; padding: 4px;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+    }
+    .tab {
+      border: 0; background: transparent; border-radius: 999px; padding: 6px 12px;
+      font-size: 12px; font-weight: 700; color: var(--muted); cursor: pointer;
+    }
+    .tab.on { background: #2dd4bf; color: #042f2e; }
+    .cam-btn {
+      top: 56px; right: 16px; border: 1px solid var(--line); background: var(--panel);
+      color: inherit; border-radius: 999px; padding: 6px 12px; font-size: 12px; cursor: pointer;
+    }
+    .choice {
+      display: block; width: 100%; text-align: left; margin: 0 0 8px;
+      border: 1px solid var(--line); background: var(--glass); border-radius: 12px; padding: 10px 12px;
+      font-size: 13px; cursor: pointer; color: inherit;
+    }
+    .choice:hover { border-color: #2dd4bf; }
+    .obs { font-size: 12px; background: rgba(251,191,36,.12); border: 1px solid rgba(251,191,36,.35); border-radius: 10px; padding: 6px 8px; margin-top: 8px; line-height: 1.4; }
+    .hazard { background: rgba(251,113,133,.12); border-color: rgba(251,113,133,.4); color: #fecaca; }
+    .toast {
+      position: absolute; left: 50%; bottom: 128px; transform: translateX(-50%);
+      max-width: 70%; background: #042f2e; color: #ecfeff; border-radius: 12px;
+      padding: 10px 14px; font-size: 13px; display: none; z-index: 6;
+      box-shadow: 0 12px 32px rgba(0,0,0,.35);
+    }
+    .toast.bad { background: #9f1239; }
+    .toast.ok { background: #14532d; }
+    .drop-hint {
+      position: absolute; left: 228px; right: 312px; bottom: 118px; text-align: center;
+      font-size: 12px; color: rgba(255,255,255,.7); pointer-events: none; text-shadow: 0 1px 8px #0b1220;
+    }
+    .boot {
+      inset: 0; display: flex; align-items: center; justify-content: center;
+      background: rgba(7,12,20,.45); color: #ecfeff; font-size: 14px; letter-spacing: .08em;
+      z-index: 8;
+    }
+    .slot { pointer-events: none; }
+    .slot-dash { stroke: #2dd4bf; stroke-width: 1.8; stroke-dasharray: 5 6; opacity: .85; }
+    .slot.hot .slot-dash { stroke: #fbbf24; stroke-width: 2.4; opacity: 1; }
+    .slot-label { font-size: 12px; fill: #0f766e; font-weight: 700; }
+    body.mode-3d .slot-label { fill: #ecfeff; }
+    .drag-ghost { position: fixed; z-index: 80; pointer-events: none; filter: drop-shadow(0 10px 16px rgba(15,23,42,.35)); }
+    .drag-ghost svg { width: 64px; height: auto; }
+    .hidden { display: none !important; }
+    .fx-beaker-bubbles circle, .fx-acid-bubbles circle { animation: rise 1.5s ease-in infinite; }
+    @keyframes rise { 0% { transform: translateY(0); opacity: .8; } 100% { transform: translateY(-28px); opacity: 0; } }
+    @media (max-width: 900px) {
+      .hud-shelf { width: 168px; }
+      .hud-guide { width: 230px; }
+      .hud-bottom, .ops, .drop-hint { left: 188px; right: 250px; }
+    }
+  </style>
+</head>
+<body class="mode-3d">
+  <div class="stage" id="stage">
+    <div id="view-2d" class="hidden"></div>
+    <canvas id="view-3d"></canvas>
+    <div class="hud-top">
+      <div class="title-block">
+        <div class="badge" id="badge">虚拟实验台</div>
+        <h1 id="title">化学虚拟实验台</h1>
+        <p id="subtitle"></p>
+        <div class="eq" id="equation"></div>
+      </div>
+    </div>
+    <div class="view-switch">
+      <button class="tab" type="button" id="tab-2d">2D</button>
+      <button class="tab on" type="button" id="tab-3d">3D</button>
+    </div>
+    <button class="cam-btn" type="button" id="btn-cam">复位视角</button>
+    <aside class="hud-shelf">
+      <div class="sec-title">试剂架</div>
+      <div class="bottles" id="reagents"></div>
+      <div class="sec-title">仪器</div>
+      <div class="chips" id="apparatus"></div>
+    </aside>
+    <aside class="hud-guide">
+      <div class="guide-top">
+        <h2>实验讲解</h2>
+        <span class="n" id="guide-n">1 / 1</span>
+      </div>
+      <div id="guide-rail"></div>
+      <div id="guide-title"></div>
+      <div id="guide-body"></div>
+      <div class="guide-nav">
+        <button class="round" type="button" id="btn-prev">‹</button>
+        <button class="round play" type="button" id="btn-play">▶</button>
+        <button class="round" type="button" id="btn-next">›</button>
+      </div>
+    </aside>
+    <div class="ops">
+      <button class="btn" type="button" id="btn-mix">混合反应</button>
+      <button class="btn quiet" type="button" id="btn-clear">清空容器</button>
+      <button class="btn" type="button" id="btn-done">完成实验</button>
+    </div>
+    <div class="hud-bottom" id="hud-meters">
+      <div class="meter"><div class="k">pH</div><div class="v" id="ph">7.0</div></div>
+      <div class="meter"><div class="k">温度</div><div class="v" id="temp">25 ℃</div></div>
+      <div class="meter" id="heat-meter">
+        <div class="k">加热</div>
+        <div class="heat-row">
+          <input id="heat" type="range" min="0" max="100" value="25">
+          <span class="heat-val" id="heat-val">25℃</span>
+        </div>
+      </div>
+    </div>
+    <div class="drop-hint" id="drop-hint">把试剂拖到发光工位，或点 +加入</div>
+    <div class="toast" id="toast"></div>
+    <div class="boot" id="boot3d">正在进入实验室…</div>
+  </div>
+  <div id="drag-ghost" class="drag-ghost hidden"></div>
+  <script type="application/json" id="lab-data">__LAB_DATA__</script>
+  <script>__LAB2D_JS__</script>
+  <script type="text/plain" id="lab3d-src">__LAB3D_JS__</script>
+  <script>
+  (function () {
+    var DATA = JSON.parse(document.getElementById("lab-data").textContent);
+    var selectedA = {};
+    var selectedR = {};
+    var stepIndex = 0;
+    var lockedSelect = false;
+    var finished = false;
+    var hazard = 0;
+    var okCount = 0;
+    var scene = {};
+    var drag = null;
+    var mode = "3d";
+    var lab3dReady = false;
+    var playing = false;
+    var playTimer = 0;
+    var heatC = 25;
+    var showingPrinciple = true;
+    var canHeat = (DATA.required_apparatus || []).indexOf("lamp") >= 0;
+
+    function $(id) { return document.getElementById(id); }
+    function report(q, a, correct) {
+      try {
+        if (window.CW && window.CW.report) window.CW.report({ component: "chem_lab", question: q, answer: a, correct: correct });
+        if (correct === true && window.CW && window.CW.correct) window.CW.correct(q, a);
+        if (correct === false && window.CW && window.CW.wrong) window.CW.wrong(q, a);
+      } catch (e) {}
+    }
+    function toast(msg, kind) {
+      var el = $("toast");
+      el.textContent = msg;
+      el.className = "toast " + (kind || "");
+      el.style.display = "block";
+      setTimeout(function () { el.style.display = "none"; }, 2200);
+    }
+    function current() { return DATA.steps[stepIndex]; }
+    function allItems() { return [].concat(DATA.inventory.apparatus || [], DATA.inventory.reagents || []); }
+    function isPlaced(id, reagent) { return reagent ? !!selectedR[id] : !!selectedA[id]; }
+    function iconOf(item, reagent) {
+      if (!window.Lab2D) return "";
+      var id = reagent ? "reagent" : item.id;
+      if (item.name === "试管夹") id = "clamp";
+      return window.Lab2D.icon(id, 42, item.color);
+    }
+    function engines() {
+      var list = [];
+      if (window.Lab2D) list.push(window.Lab2D);
+      if (lab3dReady && window.Lab3D) list.push(window.Lab3D);
+      return list;
+    }
+    function neededSlots() {
+      var set = {};
+      allItems().forEach(function (it) {
+        var reagent = (DATA.inventory.reagents || []).some(function (r) { return r.id === it.id; });
+        if (it.slot && !isPlaced(it.id, reagent)) set[it.slot] = true;
+      });
+      return set;
+    }
+    function refreshSlots() {
+      var selecting = !showingPrinciple && current() && current().need === "select" && !lockedSelect && !finished;
+      engines().forEach(function (eng) {
+        if (eng.setSelecting) eng.setSelecting(selecting, neededSlots());
+      });
+    }
+    function phFromScene() {
+      if (scene.liquid === "pink") return "10.2";
+      if (scene.liquid === "pale") return "8.4";
+      if (scene.liquid === "blue") return "4.2";
+      if (scene.acid_bubbles || scene.acid) return "1.5";
+      if (scene.liquid === "clear" && (selectedR.hcl || selectedR.h2so4)) return "1.8";
+      if (scene.done) return "7.0";
+      return "7.0";
+    }
+    function updateMeters() {
+      $("ph").textContent = phFromScene();
+      var t = heatC;
+      if (scene.flame || scene.heat) t = Math.max(t, 72);
+      $("temp").textContent = t + " ℃";
+      $("heat-val").textContent = heatC + "℃";
+    }
+    function applyScene(extra) {
+      extra = extra || {};
+      if (!scene._boot && DATA.scene_init) {
+        Object.keys(DATA.scene_init).forEach(function (k) { scene[k] = DATA.scene_init[k]; });
+        scene._boot = true;
+      }
+      Object.keys(extra).forEach(function (k) { scene[k] = extra[k]; });
+      if (canHeat && selectedA.lamp && heatC >= 55) {
+        scene.flame = true;
+        scene.heat = true;
+      }
+      engines().forEach(function (eng) {
+        (DATA.inventory.apparatus || []).forEach(function (it) {
+          if (eng.setPiece) eng.setPiece(it.id, !!selectedA[it.id]);
+        });
+        var hasR = (DATA.required_reagents || []).some(function (id) { return selectedR[id]; });
+        if (eng.setPiece) eng.setPiece("reagent", hasR);
+        if (eng.applyEffects) eng.applyEffects(Object.assign({ paper: !!selectedA.paper || !!scene.paper }, scene));
+      });
+      refreshSlots();
+      updateMeters();
+    }
+    function kindOf(step) {
+      if (!step) return "结论";
+      if (step.guide) return step.guide;
+      if (step.need === "select") return "准备";
+      if (step.need === "action") return "操作";
+      return "现象";
+    }
+    function guideCount() { return (DATA.steps || []).length + 2; }
+    function renderGuide() {
+      var total = guideCount();
+      var idx = finished ? total : (showingPrinciple ? 1 : stepIndex + 2);
+      $("guide-n").textContent = idx + " / " + total;
+      var rail = $("guide-rail");
+      if (rail) {
+        rail.innerHTML = "";
+        for (var i = 0; i < total; i++) {
+          var dot = document.createElement("i");
+          if (i + 1 < idx) dot.className = "done";
+          else if (i + 1 === idx) dot.className = "now";
+          rail.appendChild(dot);
+        }
+      }
+      if (finished) {
+        $("guide-title").innerHTML = '<span class="g-kind">结论</span>实验小结';
+        $("guide-body").textContent = (DATA.complete && DATA.complete.summary) || "实验完成。";
+      } else if (showingPrinciple) {
+        $("guide-title").innerHTML = '<span class="g-kind">原理</span>实验原理';
+        $("guide-body").textContent = DATA.goal || DATA.subtitle || "";
+      } else {
+        var s = current();
+        if (s) {
+          $("guide-title").innerHTML = '<span class="g-kind">' + kindOf(s) + "</span>" + s.title;
+          var html = "<div>" + (s.hint || "") + "</div>";
+          if (s.need === "choice") {
+            html += '<div style="margin-top:10px" id="choices"></div>';
+          } else if (s.need === "action") {
+            html += '<button class="btn" type="button" id="btn-act">' + (s.action_label || "执行操作") + "</button>";
+          }
+          $("guide-body").innerHTML = html;
+          if (s.need === "choice") {
+            var box = $("choices");
+            (s.choices || []).forEach(function (c) {
+              var btn = document.createElement("button");
+              btn.type = "button"; btn.className = "choice"; btn.textContent = c.label;
+              btn.onclick = function () { pickChoice(c); };
+              box.appendChild(btn);
+            });
+          } else if (s.need === "action") {
+            var act = $("btn-act");
+            if (act) act.onclick = function () { doAction(); };
+          }
+        }
+      }
+      refreshSlots();
+    }
+    function renderCabinet() {
+      $("reagents").innerHTML = "";
+      $("apparatus").innerHTML = "";
+      (DATA.inventory.reagents || []).forEach(function (item) {
+        var b = document.createElement("div");
+        b.className = "bottle" + (isPlaced(item.id, true) ? " placed" : "");
+        b.innerHTML = '<div class="ico">' + iconOf(item, true) + '</div><div class="name">' + item.name +
+          '</div><button class="add" type="button">+ 加入</button>';
+        b.querySelector(".add").onclick = function (e) {
+          e.stopPropagation();
+          addItem(item, true);
+        };
+        b.addEventListener("pointerdown", function (e) {
+          if (e.target.classList.contains("add")) return;
+          if (e.button != null && e.button !== 0) return;
+          startDrag(e, item, true);
+        });
+        $("reagents").appendChild(b);
+      });
+      (DATA.inventory.apparatus || []).forEach(function (item) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "chip" + (isPlaced(item.id, false) ? " placed" : "");
+        b.innerHTML = '<div class="ico">' + iconOf(item, false) + '</div><div class="name">' + item.name + "</div>";
+        b.addEventListener("pointerdown", function (e) {
+          if (e.button != null && e.button !== 0) return;
+          startDrag(e, item, false);
+        });
+        $("apparatus").appendChild(b);
+      });
+    }
+    function missingRequired() {
+      var miss = [];
+      (DATA.required_apparatus || []).forEach(function (id) { if (!selectedA[id]) miss.push(id); });
+      (DATA.required_reagents || []).forEach(function (id) { if (!selectedR[id]) miss.push(id); });
+      return miss;
+    }
+    function findItem(id, reagent) {
+      var list = reagent ? DATA.inventory.reagents : DATA.inventory.apparatus;
+      for (var i = 0; i < (list || []).length; i++) if (list[i].id === id) return list[i];
+      return null;
+    }
+    function tryFinishSelect() {
+      if (missingRequired().length) return;
+      lockedSelect = true;
+      okCount += 1;
+      report(current().title, "组装完成", true);
+      toast("组装完成，开始实验", "ok");
+      next();
+    }
+    function placeItem(item, reagent) {
+      if (reagent) selectedR[item.id] = true;
+      else selectedA[item.id] = true;
+      renderCabinet();
+      applyScene({});
+      if (lab3dReady && window.Lab3D) {
+        if (reagent && Lab3D.playPour) Lab3D.playPour(item.color || "#38bdf8");
+        else if (!reagent && Lab3D.playPlace) Lab3D.playPlace(item.id);
+      }
+      report(current().title, "放置 " + item.name, true);
+      tryFinishSelect();
+    }
+    function addItem(item, reagent) {
+      if (finished) return;
+      if (showingPrinciple) {
+        toast("先看完实验原理，再取用药品", "bad");
+        return;
+      }
+      if (!current() || current().need !== "select" || lockedSelect) {
+        toast("请按右侧讲解的步骤操作", "bad");
+        return;
+      }
+      if (isPlaced(item.id, reagent)) return;
+      if (item.slot) {
+        placeItem(item, reagent);
+        return;
+      }
+      failPlace(item);
+    }
+    function failPlace(item) {
+      hazard += 1;
+      report(current().title, "放错 " + item.name, false);
+      toast(item.slot ? "请拖到形状相同的虚线位置" : "这件不是本实验需要的", "bad");
+      renderCabinet();
+      document.querySelectorAll(".bottle, .chip").forEach(function (t) {
+        if (t.textContent.indexOf(item.name) >= 0) {
+          t.classList.add("wrong");
+          setTimeout(function () { t.classList.remove("wrong"); }, 1200);
+        }
+      });
+    }
+    function startDrag(e, item, reagent) {
+      if (finished || showingPrinciple || lockedSelect || !current() || current().need !== "select") return;
+      if (isPlaced(item.id, reagent)) return;
+      e.preventDefault();
+      var g = $("drag-ghost");
+      g.innerHTML = iconOf(item, reagent);
+      g.classList.remove("hidden");
+      drag = { item: item, reagent: reagent, ghost: g, x: e.clientX, y: e.clientY, moved: false };
+      moveGhost(e);
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    }
+    function moveGhost(e) {
+      if (!drag) return;
+      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 8) drag.moved = true;
+      drag.ghost.style.left = (e.clientX + 10) + "px";
+      drag.ghost.style.top = (e.clientY + 10) + "px";
+      var eng = mode === "3d" && window.Lab3D ? window.Lab3D : window.Lab2D;
+      if (eng && eng.hoverSlot) eng.hoverSlot(eng.hitSlot(e.clientX, e.clientY, drag.item.slot));
+    }
+    function onMove(e) { moveGhost(e); }
+    function onUp(e) {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      if (!drag) return;
+      drag.ghost.classList.add("hidden");
+      drag.ghost.innerHTML = "";
+      var eng = mode === "3d" && window.Lab3D ? window.Lab3D : window.Lab2D;
+      if (eng && eng.hoverSlot) eng.hoverSlot("");
+      var hit = eng && eng.hitSlot ? eng.hitSlot(e.clientX, e.clientY, drag.item.slot) : "";
+      var want = drag.item.slot || "";
+      var item = drag.item;
+      var reagent = drag.reagent;
+      var moved = drag.moved;
+      drag = null;
+      if (!moved && item.slot) {
+        placeItem(item, reagent);
+        return;
+      }
+      if (want && hit === want) {
+        placeItem(item, reagent);
+        return;
+      }
+      failPlace(item);
+    }
+    function next(sceneExtra) {
+      stepIndex += 1;
+      if (stepIndex >= DATA.steps.length) { finish(); return; }
+      applyScene(sceneExtra || {});
+      renderGuide();
+    }
+    function finish() {
+      finished = true;
+      lockedSelect = true;
+      playing = false;
+      $("btn-play").textContent = "▶";
+      applyScene({});
+      renderGuide();
+      report(DATA.title, "完成实验", true);
+      toast("实验完成", "ok");
+      refreshSlots();
+    }
+    function doAction() {
+      var s = current();
+      if (!s || s.need !== "action" || finished) return false;
+      okCount += 1;
+      report(s.title, s.action_label || "操作", true);
+      if (lab3dReady && window.Lab3D) {
+        var lab = s.action_label || s.title || "";
+        if (/混合|振荡|搅拌/.test(lab) && Lab3D.playMix) Lab3D.playMix();
+        else if (/加入|倒|滴|取用/.test(lab) && Lab3D.playPour) Lab3D.playPour(itemColor(s));
+      }
+      toast(s.phenomenon || "操作完成", "ok");
+      next(s.scene || {});
+      return true;
+    }
+    function itemColor(s) {
+      if (s && s.scene && s.scene.liquid === "blue") return "#2563eb";
+      if (s && s.scene && s.scene.oxide) return "#1e293b";
+      return "#38bdf8";
+    }
+    function pickChoice(c) {
+      var s = current();
+      if (!s || s.need !== "choice" || finished) return;
+      if (c.correct) {
+        okCount += 1;
+        report(s.title, c.label, true);
+        toast(c.ok || "正确", "ok");
+        var sc = Object.assign({}, s.scene || {}, c.scene || {});
+        if (c.id === "tilt_down") sc.tilt_down = true;
+        if (c.id === "tilt_up") sc.tilt_up = true;
+        next(sc);
+      } else {
+        hazard += 1;
+        report(s.title, c.label, false);
+        toast(c.hazard || "请重新选择", "bad");
+        var note = document.createElement("div");
+        note.className = "obs hazard";
+        note.textContent = c.hazard || "这样不安全。";
+        $("guide-body").appendChild(note);
+      }
+    }
+    function doMix() {
+      if (finished) return;
+      if (showingPrinciple) {
+        toast("先看完实验原理，点讲解下一步", "bad");
+        return;
+      }
+      if (current() && current().need === "select") {
+        toast("先把试剂和仪器放到台上", "bad");
+        return;
+      }
+      if (lab3dReady && window.Lab3D && Lab3D.playMix) Lab3D.playMix();
+      if (doAction()) return;
+      if (current() && current().need === "choice") {
+        toast("请在右侧讲解里选择操作", "bad");
+        return;
+      }
+      toast("按讲解步骤继续", "bad");
+    }
+    function resetLab() {
+      selectedA = {}; selectedR = {}; scene = {}; stepIndex = 0; lockedSelect = false;
+      finished = false; hazard = 0; okCount = 0;
+      heatC = 25; playing = false; showingPrinciple = true;
+      $("heat").value = "25";
+      $("btn-play").textContent = "▶";
+      clearTimeout(playTimer);
+      renderCabinet();
+      applyScene({});
+      renderGuide();
+      toast("已清空，重新开始", "ok");
+    }
+    function gotoGuide(dir) {
+      playing = false;
+      $("btn-play").textContent = "▶";
+      clearTimeout(playTimer);
+      if (dir < 0) {
+        toast("可用清空容器重做", "bad");
+        return;
+      }
+      if (showingPrinciple) {
+        showingPrinciple = false;
+        renderGuide();
+        return;
+      }
+      if (finished) return;
+      if (current() && current().need === "action") { doAction(); return; }
+      if (current() && current().need === "select" && !missingRequired().length) { tryFinishSelect(); return; }
+      toast("请先完成当前步骤", "bad");
+    }
+    function autoTick() {
+      if (!playing || finished) return;
+      if (showingPrinciple) {
+        showingPrinciple = false;
+        renderGuide();
+        playTimer = setTimeout(autoTick, 1100);
+        return;
+      }
+      var s = current();
+      if (!s) { finish(); return; }
+      if (s.need === "select") {
+        var miss = missingRequired();
+        if (!miss.length) { tryFinishSelect(); playTimer = setTimeout(autoTick, 900); return; }
+        var id = miss[0];
+        var isR = (DATA.required_reagents || []).indexOf(id) >= 0;
+        var item = findItem(id, isR);
+        if (item) placeItem(item, isR);
+        playTimer = setTimeout(autoTick, 800);
+        return;
+      }
+      if (s.need === "action") {
+        doAction();
+        playTimer = setTimeout(autoTick, 1200);
+        return;
+      }
+      if (s.need === "choice") {
+        var ok = (s.choices || []).filter(function (c) { return c.correct; })[0];
+        if (ok) pickChoice(ok);
+        playTimer = setTimeout(autoTick, 1300);
+      }
+    }
+    function togglePlay() {
+      playing = !playing;
+      $("btn-play").textContent = playing ? "❚❚" : "▶";
+      if (playing) autoTick();
+      else clearTimeout(playTimer);
+    }
+    function setMode(next) {
+      mode = next;
+      document.body.classList.toggle("mode-3d", mode === "3d");
+      document.body.classList.toggle("mode-2d", mode === "2d");
+      $("tab-2d").classList.toggle("on", mode === "2d");
+      $("tab-3d").classList.toggle("on", mode === "3d");
+      $("view-2d").classList.toggle("hidden", mode !== "2d");
+      $("view-3d").classList.toggle("hidden", mode !== "3d");
+      $("btn-cam").classList.toggle("hidden", mode !== "3d");
+      if (mode === "3d") {
+        if (!lab3dReady) $("boot3d").classList.remove("hidden");
+        ensure3d();
+      } else {
+        $("boot3d").classList.add("hidden");
+      }
+      applyScene({});
+      requestAnimationFrame(function () {
+        if (lab3dReady && window.Lab3D && window.Lab3D.resize) window.Lab3D.resize();
+      });
+    }
+    function boot3d() {
+      if (lab3dReady) return true;
+      if (!window.THREE) return false;
+      if (!window.Lab3D) {
+        var src = $("lab3d-src");
+        if (src) {
+          try { (0, eval)(src.textContent); } catch (e) { return false; }
+        }
+      }
+      if (!window.Lab3D) return false;
+      window.Lab3D.init($("view-3d"), DATA.scene || "oxygen", DATA.id);
+      lab3dReady = true;
+      $("boot3d").classList.add("hidden");
+      applyScene({});
+      return true;
+    }
+    function ensure3d() {
+      if (boot3d()) return;
+      if ($("three-cdn")) return;
+      var s = document.createElement("script");
+      s.id = "three-cdn";
+      s.src = "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js";
+      s.onload = function () {
+        if (!boot3d()) {
+          $("boot3d").classList.add("hidden");
+          toast("3D 引擎未加载，已留在 2D", "bad");
+          setMode("2d");
+        }
+      };
+      s.onerror = function () {
+        $("boot3d").classList.add("hidden");
+        toast("3D 资源加载失败，使用 2D 示意", "bad");
+        setMode("2d");
+      };
+      document.head.appendChild(s);
+    }
+
+    $("tab-2d").onclick = function () { setMode("2d"); };
+    $("tab-3d").onclick = function () { setMode("3d"); };
+    $("btn-cam").onclick = function () {
+      if (lab3dReady && window.Lab3D && Lab3D.resetView) Lab3D.resetView();
+    };
+    $("btn-mix").onclick = doMix;
+    $("btn-clear").onclick = resetLab;
+    $("btn-done").onclick = function () {
+      if (finished) { toast("已经完成", "ok"); return; }
+      if (stepIndex >= DATA.steps.length - 1 && current() && current().need !== "choice") {
+        if (current().need === "action") doAction();
+        else finish();
+        return;
+      }
+      toast("请先按讲解做完关键步骤", "bad");
+    };
+    $("btn-play").onclick = togglePlay;
+    $("btn-prev").onclick = function () { gotoGuide(-1); };
+    $("btn-next").onclick = function () { gotoGuide(1); };
+    $("heat").oninput = function () {
+      heatC = Number($("heat").value) || 0;
+      applyScene({});
+      var s = current();
+      if (s && s.id === "heat" && s.need === "choice" && heatC >= 60 && selectedA.lamp) {
+        var ok = (s.choices || []).filter(function (c) { return c.correct; })[0];
+        if (ok) pickChoice(ok);
+      }
+    };
+
+    $("badge").textContent = DATA.badge || "虚拟实验台";
+    $("title").textContent = DATA.title;
+    $("subtitle").textContent = DATA.subtitle || "";
+    $("equation").textContent = DATA.equation || "";
+    $("equation").style.display = DATA.equation ? "" : "none";
+    $("drop-hint").textContent = "拖到发光工位，或点试剂瓶「+ 加入」倒入容器";
+    if (!canHeat) {
+      $("heat-meter").style.display = "none";
+      $("hud-meters").classList.add("no-heat");
+    }
+
+    if (window.Lab2D) window.Lab2D.init($("view-2d"), DATA.scene || "oxygen", DATA.id);
+    else toast("实验台未能加载", "bad");
+    renderCabinet();
+    applyScene({});
+    renderGuide();
+    setMode("3d");
+  })();
+  </script>
+  <!-- edu-lab:12 -->
+</body>
+</html>
