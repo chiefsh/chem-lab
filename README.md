@@ -37,6 +37,26 @@ Agent 读 [`SKILL.md`](SKILL.md)。人可以直接跑 CLI，不必经过 agent�
 
 The agent reads [`SKILL.md`](SKILL.md). Humans can run the CLI without an agent.
 
+## 样例 / Example
+
+安装后在对话里执行：
+
+```
+/chem-lab 高锰酸钾制氧气
+```
+
+效果如图（2D / 3D）：
+
+After install, run this in chat. The page looks like this (2D / 3D):
+
+**2D**
+
+![高锰酸钾制取氧气 2D](examples/prep_oxygen_kmno4-2d.png)
+
+**3D**
+
+![高锰酸钾制取氧气 3D](examples/prep_oxygen_kmno4-3d.png)
+
 ## 命令行 / CLI
 
 需要 **Python 3**（仅标准库）。
@@ -85,6 +105,7 @@ chem-lab/
 ├── SKILL.md                 # agent 说明 + YAML 头 / agent instructions + YAML frontmatter
 ├── scripts/generate.py      # 目录、剧本、CLI / catalog, scripts, CLI
 ├── template/                # lab.html + lab2d.js + lab3d.js
+├── examples/                # README 截图 / README screenshots
 └── references/              # 实验目录与 JSON 字段 / catalog and JSON schema
 ```
 
